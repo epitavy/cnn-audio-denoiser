@@ -35,6 +35,7 @@ class Dataset:
         return np.array(trimed_audio)
 
     def _phase_aware_scaling(self, clean_spectral_magnitude, clean_phase, noise_phase):
+        print(clean_phase.shape, noise_phase.shape)
         assert clean_phase.shape == noise_phase.shape, "Shapes must match."
         return clean_spectral_magnitude * np.cos(clean_phase - noise_phase)
 
@@ -70,31 +71,33 @@ class Dataset:
         noisyAudio = clean_audio + np.sqrt(speech_power / noise_power) * noiseSegment
         return noisyAudio
 
-    def parallel_audio_processing(self, clean_filename):
+    def parallel_audio_processing(self, clean_filename, noise_filename):
+        print(clean_filename, noise_filename)
 
+        # read the clean and noise filenames
         clean_audio, _ = read_audio(clean_filename, self.sample_rate)
-
-        # remove silent frame from clean audio
-        clean_audio = self._remove_silent_frames(clean_audio)
-
-        noise_filename = self._sample_noise_filename()
-
-        # read the noise filename
         noise_audio, sr = read_audio(noise_filename, self.sample_rate)
 
-        # remove silent frame from noise audio
+
+        # remove silent frame from clean and noise audio
+        """Cannot do it otherwise audio won't have the same length
+        clean_audio = self._remove_silent_frames(clean_audio)
         noise_audio = self._remove_silent_frames(noise_audio)
+        """
 
         # sample random fixed-sized snippets of audio
-        clean_audio = self._audio_random_crop(clean_audio, duration=self.audio_max_duration)
+        #clean_audio = self._audio_random_crop(clean_audio, duration=self.audio_max_duration)
 
         # add noise to input image
-        noiseInput = self._add_noise_to_clean_audio(clean_audio, noise_audio)
+        # noiseInput = self._add_noise_to_clean_audio(clean_audio, noise_audio)
+        noiseInput = noise_audio
 
+        print("Noise audio shape: ", noiseInput.shape)
         # extract stft features from noisy audio
-        noisy_input_fe = FeatureExtractor(noiseInput, windowLength=self.window_length, overlap=self.overlap,
-                                          sample_rate=self.sample_rate)
+        noisy_input_fe = FeatureExtractor(noiseInput, windowLength=self.window_length,
+                            overlap=self.overlap,   sample_rate=self.sample_rate)
         noise_spectrogram = noisy_input_fe.get_stft_spectrogram()
+        print("Noise audio stft shape : ", noise_spectrogram.shape)
 
         # Or get the phase angle (in radians)
         # noisy_stft_magnitude, noisy_stft_phase = librosa.magphase(noisy_stft_features)
@@ -103,11 +106,14 @@ class Dataset:
         # get the magnitude of the spectral
         noise_magnitude = np.abs(noise_spectrogram)
 
+        print("Clean audio shape: ", clean_audio.shape)
         # extract stft features from clean audio
         clean_audio_fe = FeatureExtractor(clean_audio, windowLength=self.window_length, overlap=self.overlap,
                                           sample_rate=self.sample_rate)
         clean_spectrogram = clean_audio_fe.get_stft_spectrogram()
         # clean_spectrogram = cleanAudioFE.get_mel_spectrogram()
+
+        print("Clean audio stft shape:", clean_spectrogram.shape)
 
         # get the clean phase
         clean_phase = np.angle(clean_spectrogram)
@@ -139,12 +145,13 @@ class Dataset:
 
             writer = tf.io.TFRecordWriter(tfrecord_filename)
             clean_filenames_sublist = self.clean_filenames[i:i + subset_size]
+            noise_filenames_sublist = self.noise_filenames[i:i + subset_size]
 
             print(f"Processing files from: {i} to {i + subset_size}")
             if parallel:
                 out = p.map(self.parallel_audio_processing, clean_filenames_sublist)
             else:
-                out = [self.parallel_audio_processing(filename) for filename in clean_filenames_sublist]
+                out = [self.parallel_audio_processing(clean, noise) for clean, noise in zip(clean_filenames_sublist, noise_filenames_sublist)]
 
             for o in out:
                 noise_stft_magnitude = o[0]
