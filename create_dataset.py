@@ -1,19 +1,34 @@
 from data_processing.dataset import Dataset
+import random
 import warnings
 import os
 
 warnings.filterwarnings(action='ignore')
 dataset_path = '../DroneBot_Audio_Files/dataset'
 data_files = os.listdir(dataset_path)
-clean_train_filenames = [os.path.join(dataset_path, f) for f in data_files if f.startswith('out_train')]
-clean_val_filenames = [os.path.join(dataset_path, f) for f in data_files if f.startswith('out_val')]
-noise_train_filenames = [os.path.join(dataset_path, f) for f in data_files if f.startswith('in_train')]
-noise_val_filenames = [os.path.join(dataset_path, f) for f in data_files if f.startswith('in_val')]
+clean_filenames = [os.path.join(dataset_path, f) for f in data_files if f.startswith('clean')]
+noise_filenames = [os.path.join(dataset_path, f) for f in data_files if f.startswith('noise')]
 
-clean_train_filenames.sort()
-noise_train_filenames.sort()
-clean_val_filenames.sort()
-noise_val_filenames.sort()
+
+clean_filenames.sort()
+noise_filenames.sort()
+
+out_filenames = clean_filenames + clean_filenames
+in_filenames = noise_filenames + clean_filenames
+
+def shuffle(a, b):
+    assert len(a) == len(b)
+    indexes = list(range(len(a)))
+    random.shuffle(indexes)
+
+    sa, sb = [], []
+    for i in indexes:
+        sa.append(a[i])
+        sb.append(b[i])
+
+    return sa, sb
+
+in_filenames, out_filenames = shuffle(in_filenames, out_filenames)
 
 windowLength = 256
 config = {'windowLength': windowLength,
@@ -21,10 +36,12 @@ config = {'windowLength': windowLength,
           'fs': 16000,
           'audio_max_duration': 0.8}
 
-val_dataset = Dataset(clean_val_filenames, noise_val_filenames, **config)
+N_TEST_FILE = 8
+
+val_dataset = Dataset(out_filenames[-N_TEST_FILE:], in_filenames[-N_TEST_FILE:], **config)
 val_dataset.create_tf_record(prefix='val', subset_size=2000, parallel=False)
 
-train_dataset = Dataset(clean_train_filenames, noise_train_filenames, **config)
+train_dataset = Dataset(out_filenames[:-N_TEST_FILE], in_filenames[:-N_TEST_FILE], **config)
 train_dataset.create_tf_record(prefix='train', subset_size=4000, parallel=False)
 """
 ## Create Test Set
