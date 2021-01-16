@@ -13,8 +13,10 @@ noise_filenames = [os.path.join(dataset_path, f) for f in data_files if f.starts
 clean_filenames.sort()
 noise_filenames.sort()
 
-out_filenames = clean_filenames + clean_filenames
-in_filenames = noise_filenames + clean_filenames
+clean_to_clean_ratio = 10
+
+out_filenames = clean_filenames# + clean_filenames[::clean_to_clean_ratio]
+in_filenames = noise_filenames# + clean_filenames[::clean_to_clean_ratio]
 
 def shuffle(a, b):
     assert len(a) == len(b)
@@ -36,9 +38,13 @@ config = {'windowLength': windowLength,
           'fs': 16000,
           'audio_max_duration': 0.8}
 
-N_TEST_FILE = 8
+N_TEST_FILE = 20
 
-val_dataset = Dataset(out_filenames[-N_TEST_FILE:], in_filenames[-N_TEST_FILE:], **config)
+# Quick fix to remove augmented data from validation set
+val_out_filenames = [f for f in out_filenames[-N_TEST_FILE:] if len(f.rsplit('/')[-1]) <= 12]
+val_in_filenames = [f for f in in_filenames[-N_TEST_FILE:] if len(f.rsplit('/')[-1]) <= 12]
+
+val_dataset = Dataset(val_out_filenames, val_in_filenames[-N_TEST_FILE:], **config)
 val_dataset.create_tf_record(prefix='val', subset_size=2000, parallel=False)
 
 train_dataset = Dataset(out_filenames[:-N_TEST_FILE], in_filenames[:-N_TEST_FILE], **config)
