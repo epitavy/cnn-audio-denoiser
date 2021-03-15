@@ -22,6 +22,7 @@ class Dataset:
         self.overlap = config['overlap']
         self.window_length = config['windowLength']
         self.audio_max_duration = config['audio_max_duration']
+        self.numSegments = config['numSegments']
 
     def _sample_noise_filename(self):
         return np.random.choice(self.noise_filenames)
@@ -79,12 +80,6 @@ class Dataset:
         noise_audio, sr = read_audio(noise_filename, self.sample_rate)
 
 
-        # remove silent frame from clean and noise audio
-        """Cannot do it otherwise audio won't have the same length
-        clean_audio = self._remove_silent_frames(clean_audio)
-        noise_audio = self._remove_silent_frames(noise_audio)
-        """
-
         # sample random fixed-sized snippets of audio
         #clean_audio = self._audio_random_crop(clean_audio, duration=self.audio_max_duration)
 
@@ -92,12 +87,10 @@ class Dataset:
         # noiseInput = self._add_noise_to_clean_audio(clean_audio, noise_audio)
         noiseInput = noise_audio
 
-        print("Noise audio shape: ", noiseInput.shape)
         # extract stft features from noisy audio
         noisy_input_fe = FeatureExtractor(noiseInput, windowLength=self.window_length,
                             overlap=self.overlap,   sample_rate=self.sample_rate)
         noise_spectrogram = noisy_input_fe.get_stft_spectrogram()
-        print("Noise audio stft shape : ", noise_spectrogram.shape)
 
         # Or get the phase angle (in radians)
         # noisy_stft_magnitude, noisy_stft_phase = librosa.magphase(noisy_stft_features)
@@ -106,14 +99,12 @@ class Dataset:
         # get the magnitude of the spectral
         noise_magnitude = np.abs(noise_spectrogram)
 
-        print("Clean audio shape: ", clean_audio.shape)
         # extract stft features from clean audio
         clean_audio_fe = FeatureExtractor(clean_audio, windowLength=self.window_length, overlap=self.overlap,
                                           sample_rate=self.sample_rate)
         clean_spectrogram = clean_audio_fe.get_stft_spectrogram()
         # clean_spectrogram = cleanAudioFE.get_mel_spectrogram()
 
-        print("Clean audio stft shape:", clean_spectrogram.shape)
 
         # get the clean phase
         clean_phase = np.angle(clean_spectrogram)
@@ -149,7 +140,7 @@ class Dataset:
 
             print(f"Processing files from: {i} to {i + subset_size}")
             if parallel:
-                out = p.map(self.parallel_audio_processing, clean_filenames_sublist)
+                out = p.starmap(self.parallel_audio_processing, zip(clean_filenames_sublist, noise_filenames_sublist))
             else:
                 out = [self.parallel_audio_processing(clean, noise) for clean, noise in zip(clean_filenames_sublist, noise_filenames_sublist)]
 
@@ -158,7 +149,7 @@ class Dataset:
                 clean_stft_magnitude = o[1]
                 noise_stft_phase = o[2]
 
-                noise_stft_mag_features = prepare_input_features(noise_stft_magnitude, numSegments=8, numFeatures=129)
+                noise_stft_mag_features = prepare_input_features(noise_stft_magnitude, numSegments=self.numSegments, numFeatures=129)
 
                 noise_stft_mag_features = np.transpose(noise_stft_mag_features, (2, 0, 1))
                 clean_stft_magnitude = np.transpose(clean_stft_magnitude, (1, 0))

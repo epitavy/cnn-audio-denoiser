@@ -3,20 +3,19 @@ import random
 import warnings
 import os
 
+VALIDATION_SPLIT = 0.8
+
 warnings.filterwarnings(action='ignore')
 dataset_path = '../DroneBot_Audio_Files/dataset'
 data_files = os.listdir(dataset_path)
-clean_filenames = [os.path.join(dataset_path, f) for f in data_files if f.startswith('clean')]
-noise_filenames = [os.path.join(dataset_path, f) for f in data_files if f.startswith('noise')]
 
+# Check with double underscore '__' prevent data from brikair to be used, keep it for test data
+clean_filenames = [os.path.join(dataset_path, f) for f in data_files if f.startswith('clean') and not f.startswith('clean__')]
+noise_filenames = [os.path.join(dataset_path, f) for f in data_files if f.startswith('noise') and not f.startswith('noise__')]
 
+# Make clean files match with their noise file
 clean_filenames.sort()
 noise_filenames.sort()
-
-clean_to_clean_ratio = 10
-
-out_filenames = clean_filenames# + clean_filenames[::clean_to_clean_ratio]
-in_filenames = noise_filenames# + clean_filenames[::clean_to_clean_ratio]
 
 def shuffle(a, b):
     assert len(a) == len(b)
@@ -30,31 +29,18 @@ def shuffle(a, b):
 
     return sa, sb
 
-in_filenames, out_filenames = shuffle(in_filenames, out_filenames)
+clean_filenames, noise_filenames = shuffle(clean_filenames, noise_filenames)
 
 windowLength = 256
 config = {'windowLength': windowLength,
           'overlap': round(0.25 * windowLength),
           'fs': 16000,
+          'numSegments': 8,
           'audio_max_duration': 0.8}
 
-N_TEST_FILE = 20
+split = int(len(clean_filenames) * VALIDATION_SPLIT)
+val_dataset = Dataset(clean_filenames[split:], noise_filenames[split:], **config)
+val_dataset.create_tf_record(prefix='val', subset_size=2000)
 
-# Quick fix to remove augmented data from validation set
-val_out_filenames = [f for f in out_filenames[-N_TEST_FILE:] if len(f.rsplit('/')[-1]) <= 12]
-val_in_filenames = [f for f in in_filenames[-N_TEST_FILE:] if len(f.rsplit('/')[-1]) <= 12]
-
-val_dataset = Dataset(val_out_filenames, val_in_filenames[-N_TEST_FILE:], **config)
-val_dataset.create_tf_record(prefix='val', subset_size=2000, parallel=False)
-
-train_dataset = Dataset(out_filenames[:-N_TEST_FILE], in_filenames[:-N_TEST_FILE], **config)
-train_dataset.create_tf_record(prefix='train', subset_size=4000, parallel=False)
-"""
-## Create Test Set
-clean_test_filenames = mcv.get_test_filenames()
-
-noise_test_filenames = us8K.get_test_filenames()
-
-test_dataset = Dataset(clean_test_filenames, noise_test_filenames, **config)
-tet_dataset.create_tf_record(prefix='test', subset_size=1000, parallel=False)
-"""
+train_dataset = Dataset(clean_filenames[:split], noise_filenames[:split], **config)
+train_dataset.create_tf_record(prefix='train', subset_size=4000)
